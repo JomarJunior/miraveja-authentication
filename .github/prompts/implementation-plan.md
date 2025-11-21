@@ -9,12 +9,14 @@ Build a production-ready OAuth2/OpenID Connect authentication library following 
 ## Core Principles
 
 ### 1. Full Object-Oriented Programming
+
 - **No standalone functions** - all functionality encapsulated in classes
 - **Behavior with data** - methods belong to the objects they operate on
 - **Clear responsibilities** - single responsibility per class
 - **Proper encapsulation** - private implementation, public interfaces
 
 ### 2. DDD/Hexagonal Architecture
+
 ```
 Domain (Core Business Logic)
     ↑
@@ -24,23 +26,37 @@ Infrastructure (External Integrations)
 ```
 
 **Layer Separation:**
-- **Domain**: Business models (User, Claims), interfaces (IOAuth2Provider, IRoleMapper, IOIDCDiscoveryService), exceptions
+
+- **Domain**: Business models (User, Token, Role), interfaces (IOAuth2Provider, IClaimsParser, IOIDCDiscoveryService, IAuthenticator), base claims (BaseClaims), exceptions
 - **Application**: Use cases and orchestration
   - `OAuth2Configuration`: Configuration management
   - `OAuth2Provider`: Token validation use case (orchestrates validation flow)
 - **Infrastructure**: External integrations
-  - `OIDCDiscoveryService`: HTTP-based OIDC discovery and JWKS retrieval
-  - `KeycloakRoleMapper`: Keycloak-specific role extraction
-  - `FastAPIAuthenticator`: FastAPI dependency injection
-  - `MockOAuth2Provider`: Testing utilities
+  - **Providers** (per-provider implementations):
+    - `keycloak/`: KeycloakClaims, KeycloakClaimsParser, KeycloakOIDCDiscovery
+  - **Services**:
+    - `OIDCDiscoveryService`: HTTP-based OIDC discovery and JWKS retrieval
+  - **FastAPI Integration**: FastAPIAuthenticator
+  - **Testing**: MockOAuth2Provider
 
-**Key Design Decision:**
-The `OAuth2Provider` is in the **Application Layer** because it represents a use case (validating tokens) and orchestrates business logic. It depends on `IOIDCDiscoveryService` (domain interface) which is implemented by `OIDCDiscoveryService` (infrastructure) for external HTTP operations. This separation allows:
-- The use case to remain independent of HTTP implementation details
-- Easy testing with mocks (no HTTP calls needed)
-- Flexibility to swap discovery implementations (e.g., cache-only, different HTTP clients)
+**Key Design Decisions:**
+
+1. **OAuth2Provider in Application Layer**: Represents a use case (validating tokens) and orchestrates business logic. Depends on `IOIDCDiscoveryService` and `IClaimsParser` (domain interfaces) implemented in infrastructure.
+
+2. **Claims Parser Architecture**:
+   - `BaseClaims` (domain): Provider-agnostic OIDC standard claims with abstract methods for role extraction
+   - `KeycloakClaims` (infrastructure): Keycloak-specific claims with realm_access/resource_access fields
+   - `IClaimsParser` (domain): Interface for parsing raw JWT payload into provider-specific Claims
+   - Each Claims class knows how to extract its own roles → eliminates separate role mapper classes
+
+3. **Benefits**:
+   - Better encapsulation: Claims contain both data and behavior (role extraction)
+   - Type safety: Each provider has properly typed claims structure
+   - Extensibility: Easy to add new providers (Auth0, Cognito, etc.) without modifying existing code
+   - Cleaner User creation: `User.from_claims(claims)` - no external mapper needed
 
 ### 3. Clean Code Standards
+
 - Explicit over implicit
 - Readable, self-documenting code
 - Comprehensive docstrings (Google style)
@@ -48,6 +64,7 @@ The `OAuth2Provider` is in the **Application Layer** because it represents a use
 - 100% test coverage
 
 ### 4. Silent Library
+
 - No logging output
 - No print statements
 - No unwanted side effects
@@ -70,8 +87,8 @@ miraveja-authentication/
 │       │
 │       ├── domain/                # Domain Layer
 │       │   ├── __init__.py
-│       │   ├── models.py          # User, Claims, Token, Role
-│       │   ├── interfaces.py      # IOAuth2Provider, IRoleMapper, IAuthenticator
+│       │   ├── models.py          # User, BaseClaims, Token, Role
+│       │   ├── interfaces.py      # IOAuth2Provider, IClaimsParser, IOIDCDiscoveryService, IAuthenticator
 │       │   └── exceptions.py      # All custom exceptions
 │       │
 │       ├── application/           # Application Layer
@@ -81,16 +98,22 @@ miraveja-authentication/
 │       │
 │       └── infrastructure/        # Infrastructure Layer
 │           ├── __init__.py
+│           ├── providers/         # Provider-specific implementations
+│           │   ├── __init__.py
+│           │   └── keycloak/
+│           │       ├── __init__.py
+│           │       ├── claims.py          # KeycloakClaims
+│           │       ├── parser.py          # KeycloakClaimsParser
+│           │       └── discovery.py       # KeycloakOIDCDiscovery (optional)
 │           ├── services/
 │           │   ├── __init__.py
-│           │   ├── oidc_discovery.py       # OIDCDiscoveryService
-│           │   └── keycloak_role_mapper.py # KeycloakRoleMapper
+│           │   └── oidc_discovery.py      # OIDCDiscoveryService (generic)
 │           ├── fastapi_integration/
 │           │   ├── __init__.py
-│           │   └── authenticator.py        # FastAPIAuthenticator
+│           │   └── authenticator.py       # FastAPIAuthenticator
 │           └── testing/
 │               ├── __init__.py
-│               └── mock_provider.py        # MockOAuth2Provider
+│               └── mock_provider.py       # MockOAuth2Provider
 │
 ├── tests/
 │   ├── __init__.py
@@ -106,8 +129,13 @@ miraveja-authentication/
 │   │   │   └── test_oauth2_provider.py
 │   │   └── infrastructure/
 │   │       ├── __init__.py
+│   │       ├── providers/
+│   │       │   ├── __init__.py
+│   │       │   └── keycloak/
+│   │       │       ├── __init__.py
+│   │       │       ├── test_claims.py
+│   │       │       └── test_parser.py
 │   │       ├── test_oidc_discovery.py
-│   │       ├── test_keycloak_role_mapper.py
 │   │       ├── test_fastapi_authenticator.py
 │   │       └── test_mock_provider.py
 │   │
@@ -120,7 +148,7 @@ miraveja-authentication/
 └── examples/
     ├── basic_usage.py
     ├── fastapi_app.py
-    └── custom_role_mapper.py
+    └── custom_claims_parser.py
 ```
 
 ---
@@ -130,6 +158,7 @@ miraveja-authentication/
 ### Phase 1: Project Setup & Domain Layer
 
 **Step 1.1: Initialize Project**
+
 ```bash
 poetry new miraveja-authentication --name miraveja_auth
 cd miraveja-authentication
@@ -141,6 +170,7 @@ poetry add --optional fastapi
 **Step 1.2: Configure Poetry**
 
 Update `pyproject.toml`:
+
 ```toml
 [tool.poetry]
 name = "miraveja-authentication"
@@ -178,8 +208,10 @@ build-backend = "poetry.core.masonry.api"
 **Step 1.3: Create Domain Models**
 
 `src/miraveja_auth/domain/models.py`:
+
 ```python
 """Domain models for authentication."""
+from abc import ABC, abstractmethod
 from typing import Optional, Dict, List
 from pydantic import BaseModel, Field
 
@@ -194,16 +226,24 @@ class Role(BaseModel):
     container_id: Optional[str] = Field(default=None, alias="containerId")
 
 
-class Claims(BaseModel):
-    """JWT token claims (OIDC standard)."""
-    # Standard OIDC claims
+class BaseClaims(BaseModel, ABC):
+    """Base JWT token claims (OIDC standard - provider-agnostic).
+
+    This abstract base class defines standard OIDC claims that are common
+    across all OAuth2/OIDC providers. Provider-specific claims (e.g., Keycloak,
+    Auth0) should inherit from this class and add their custom fields.
+
+    Each concrete Claims class must implement role extraction methods,
+    encapsulating the logic for how roles are stored in that provider's tokens.
+    """
+    # Standard OIDC claims (required)
     iss: str  # Issuer
     sub: str  # Subject (user ID)
     aud: str | List[str]  # Audience
     exp: int  # Expiration timestamp
     iat: int  # Issued at timestamp
 
-    # Optional standard claims
+    # Optional standard OIDC claims
     jti: Optional[str] = None
     typ: Optional[str] = None
     azp: Optional[str] = None
@@ -212,12 +252,30 @@ class Claims(BaseModel):
     email_verified: Optional[bool] = None
     preferred_username: Optional[str] = None
 
-    # Provider-specific extensions (Keycloak)
-    realm_access: Optional[Dict[str, List[str]]] = None
-    resource_access: Optional[Dict[str, Dict[str, List[str]]]] = None
-
     class Config:
-        extra = "allow"  # Allow additional claims
+        extra = "allow"  # Allow additional provider-specific claims
+
+    @abstractmethod
+    def get_realm_roles(self) -> List[str]:
+        """Extract realm/global roles from claims.
+
+        Returns:
+            List of realm role names.
+        """
+        pass
+
+    @abstractmethod
+    def get_client_roles(self, client: Optional[str] = None) -> Dict[str, List[str]]:
+        """Extract client-specific roles from claims.
+
+        Args:
+            client: Optional client ID. If provided, return roles for that client only.
+                   If None, return all client roles.
+
+        Returns:
+            Dictionary mapping client IDs to role lists.
+        """
+        pass
 
 
 class User(BaseModel):
@@ -230,28 +288,24 @@ class User(BaseModel):
     client_roles: Dict[str, List[str]] = Field(default_factory=dict)
 
     @classmethod
-    def from_claims(cls, claims: Claims, role_mapper: 'IRoleMapper') -> "User":
-        """Create User from JWT claims using role mapper.
+    def from_claims(cls, claims: BaseClaims) -> "User":
+        """Create User from JWT claims.
+
+        Claims object knows how to extract its own roles based on provider-specific structure.
 
         Args:
-            claims: JWT token claims.
-            role_mapper: Strategy for extracting roles from claims.
+            claims: Provider-specific claims (inherits from BaseClaims).
 
         Returns:
             User instance with extracted roles.
         """
-        from .interfaces import IRoleMapper  # Import here to avoid circular
-
-        realm_roles = role_mapper.extract_realm_roles(claims)
-        client_roles = role_mapper.extract_all_client_roles(claims)
-
         return cls(
             id=claims.sub,
             username=claims.preferred_username,
             email=claims.email,
             email_verified=claims.email_verified or False,
-            realm_roles=realm_roles,
-            client_roles=client_roles,
+            realm_roles=claims.get_realm_roles(),
+            client_roles=claims.get_client_roles(),
         )
 
     def has_realm_role(self, role: str) -> bool:
@@ -323,11 +377,12 @@ class Token(BaseModel):
 **Step 1.4: Create Domain Interfaces**
 
 `src/miraveja_auth/domain/interfaces.py`:
+
 ```python
 """Domain interfaces."""
 from abc import ABC, abstractmethod
-from typing import List, Dict
-from .models import User, Claims
+from typing import Dict, Any
+from .models import User, BaseClaims
 
 
 class IOAuth2Provider(ABC):
@@ -351,43 +406,25 @@ class IOAuth2Provider(ABC):
         pass
 
 
-class IRoleMapper(ABC):
-    """Role extraction strategy interface."""
+class IClaimsParser(ABC):
+    """Claims parser interface.
+
+    Parses raw JWT payload into provider-specific Claims objects.
+    Each provider implementation (Keycloak, Auth0, etc.) provides its own parser.
+    """
 
     @abstractmethod
-    def extract_realm_roles(self, claims: Claims) -> List[str]:
-        """Extract realm-level roles from token claims.
+    def parse(self, payload: Dict[str, Any]) -> BaseClaims:
+        """Parse JWT payload into provider-specific Claims object.
 
         Args:
-            claims: JWT token claims.
+            payload: Raw JWT token payload (decoded dict).
 
         Returns:
-            List of realm role names.
-        """
-        pass
+            Provider-specific Claims instance (inherits from BaseClaims).
 
-    @abstractmethod
-    def extract_client_roles(self, claims: Claims, client: str) -> List[str]:
-        """Extract client-specific roles from token claims.
-
-        Args:
-            claims: JWT token claims.
-            client: Client ID.
-
-        Returns:
-            List of client role names for the specified client.
-        """
-        pass
-
-    @abstractmethod
-    def extract_all_client_roles(self, claims: Claims) -> Dict[str, List[str]]:
-        """Extract all client roles from token claims.
-
-        Args:
-            claims: JWT token claims.
-
-        Returns:
-            Dictionary mapping client IDs to role lists.
+        Raises:
+            TokenInvalidError: Payload structure is invalid.
         """
         pass
 ```
@@ -395,6 +432,7 @@ class IRoleMapper(ABC):
 **Step 1.5: Create Domain Exceptions**
 
 `src/miraveja_auth/domain/exceptions.py`:
+
 ```python
 """Domain exceptions."""
 
@@ -440,15 +478,16 @@ class ConfigurationError(Exception):
         super().__init__(f"{field}: {message}")
 ```
 
-**Step 1.6: Create Domain __init__.py**
+**Step 1.6: Create Domain **init**.py**
 
 `src/miraveja_auth/domain/__init__.py`:
+
 ```python
 """Domain layer - Core business logic."""
-from .models import User, Claims, Token, Role
+from .models import User, BaseClaims, Token, Role
 from .interfaces import (
     IOAuth2Provider,
-    IRoleMapper,
+    IClaimsParser,
     IOIDCDiscoveryService,
     IAuthenticator,
 )
@@ -462,11 +501,11 @@ from .exceptions import (
 
 __all__ = [
     "User",
-    "Claims",
+    "BaseClaims",
     "Token",
     "Role",
     "IOAuth2Provider",
-    "IRoleMapper",
+    "IClaimsParser",
     "IOIDCDiscoveryService",
     "IAuthenticator",
     "AuthenticationError",
@@ -484,6 +523,7 @@ __all__ = [
 **Step 2.1: Create OAuth2Configuration**
 
 `src/miraveja_auth/application/configuration.py`:
+
 ```python
 """Application configuration."""
 import os
@@ -552,15 +592,14 @@ class OAuth2Configuration(BaseModel):
 **Step 2.2: Create OAuth2Provider (Use Case)**
 
 `src/miraveja_auth/application/oauth2_provider.py`:
+
 ```python
 """OAuth2 provider - Token validation use case."""
 import time
-from typing import Optional
 import jwt
-from jwt import PyJWKClient
 from .configuration import OAuth2Configuration
-from ..domain.interfaces import IOAuth2Provider, IRoleMapper
-from ..domain.models import User, Claims
+from ..domain.interfaces import IOAuth2Provider, IClaimsParser, IOIDCDiscoveryService
+from ..domain.models import User
 from ..domain.exceptions import (
     TokenExpiredError,
     TokenInvalidError,
@@ -574,27 +613,26 @@ class OAuth2Provider(IOAuth2Provider):
     This class orchestrates token validation by:
     1. Checking token expiration and TTL
     2. Verifying JWT signature (offline with static key or online with JWKS)
-    3. Parsing claims into User model with roles
+    3. Parsing claims using provider-specific parser
+    4. Creating User from claims (claims extract their own roles)
     """
 
     def __init__(
         self,
         config: OAuth2Configuration,
-        discovery_service: 'IOIDCDiscoveryService',
-        role_mapper: Optional[IRoleMapper] = None,
+        discovery_service: IOIDCDiscoveryService,
+        claims_parser: IClaimsParser,
     ):
         """Initialize provider.
 
         Args:
             config: OAuth2 configuration.
             discovery_service: Service for OIDC discovery and JWKS.
-            role_mapper: Role extraction strategy (defaults to KeycloakRoleMapper).
+            claims_parser: Parser for converting JWT payload to provider-specific Claims.
         """
-        from ..infrastructure.services import KeycloakRoleMapper  # Avoid circular import
-
         self._config = config
         self._discovery = discovery_service
-        self._role_mapper = role_mapper or KeycloakRoleMapper()
+        self._claims_parser = claims_parser
 
     async def validate_token(self, token: str) -> User:
         """Validate JWT token and return authenticated user.
@@ -658,9 +696,11 @@ class OAuth2Provider(IOAuth2Provider):
                     issuer=self._config.issuer,
                 )
 
-            # Parse claims and create user
-            claims = Claims(**verified_payload)
-            user = User.from_claims(claims, self._role_mapper)
+            # Parse claims using provider-specific parser
+            claims = self._claims_parser.parse(verified_payload)
+
+            # Create user from claims (claims know how to extract roles)
+            user = User.from_claims(claims)
 
             return user
 
@@ -672,9 +712,10 @@ class OAuth2Provider(IOAuth2Provider):
             raise AuthenticationError(f"Token validation failed: {str(e)}")
 ```
 
-**Step 2.3: Create Application __init__.py**
+**Step 2.3: Create Application **init**.py**
 
 `src/miraveja_auth/application/__init__.py`:
+
 ```python
 """Application layer - Use cases and orchestration."""
 from .configuration import OAuth2Configuration
@@ -692,6 +733,7 @@ __all__ = ["OAuth2Configuration", "OAuth2Provider"]
 First, add the interface to domain layer:
 
 `src/miraveja_auth/domain/interfaces.py` (add to existing file):
+
 ```python
 class IOIDCDiscoveryService(ABC):
     """OIDC discovery and JWKS service interface."""
@@ -727,6 +769,7 @@ class IOIDCDiscoveryService(ABC):
 **Step 3.2: Create OIDCDiscoveryService**
 
 `src/miraveja_auth/infrastructure/services/oidc_discovery.py`:
+
 ```python
 """OIDC discovery service - External HTTP operations."""
 import time
@@ -815,54 +858,138 @@ class OIDCDiscoveryService(IOIDCDiscoveryService):
         self._cache_expiry = time.time() + self._cache_ttl
 ```
 
-**Step 3.3: Create KeycloakRoleMapper**
+**Step 3.3: Create Keycloak Provider - Claims**
 
-`src/miraveja_auth/infrastructure/services/keycloak_role_mapper.py`:
+`src/miraveja_auth/infrastructure/providers/keycloak/claims.py`:
+
 ```python
-"""Keycloak role mapper implementation."""
-from typing import List, Dict
-from ...domain.interfaces import IRoleMapper
-from ...domain.models import Claims
+"""Keycloak-specific JWT claims."""
+from typing import List, Dict, Optional
+from ....domain.models import BaseClaims
 
 
-class KeycloakRoleMapper(IRoleMapper):
-    """Extract roles from Keycloak-style token claims."""
+class KeycloakClaims(BaseClaims):
+    """Keycloak-specific JWT token claims.
 
-    def extract_realm_roles(self, claims: Claims) -> List[str]:
-        """Extract realm roles from Keycloak claims structure."""
-        if not claims.realm_access:
+    Extends BaseClaims with Keycloak's custom claim structure for roles:
+    - realm_access: Contains realm-level roles
+    - resource_access: Contains client-specific roles
+    """
+
+    # Keycloak-specific fields
+    realm_access: Optional[Dict[str, List[str]]] = None
+    resource_access: Optional[Dict[str, Dict[str, List[str]]]] = None
+
+    def get_realm_roles(self) -> List[str]:
+        """Extract realm roles from Keycloak claims structure.
+
+        Keycloak stores realm roles in: realm_access.roles[]
+
+        Returns:
+            List of realm role names.
+        """
+        if not self.realm_access:
             return []
-        return claims.realm_access.get("roles", [])
+        return self.realm_access.get("roles", [])
 
-    def extract_client_roles(self, claims: Claims, client: str) -> List[str]:
-        """Extract client-specific roles from Keycloak claims."""
-        if not claims.resource_access:
-            return []
-        client_access = claims.resource_access.get(client, {})
-        return client_access.get("roles", [])
+    def get_client_roles(self, client: Optional[str] = None) -> Dict[str, List[str]]:
+        """Extract client-specific roles from Keycloak claims.
 
-    def extract_all_client_roles(self, claims: Claims) -> Dict[str, List[str]]:
-        """Extract all client roles from Keycloak claims."""
-        if not claims.resource_access:
+        Keycloak stores client roles in: resource_access.<client>.roles[]
+
+        Args:
+            client: Optional client ID. If provided, return roles for that client only.
+                   If None, return all client roles.
+
+        Returns:
+            Dictionary mapping client IDs to role lists.
+        """
+        if not self.resource_access:
             return {}
 
+        if client:
+            # Return roles for specific client
+            client_access = self.resource_access.get(client, {})
+            roles = client_access.get("roles", [])
+            return {client: roles} if roles else {}
+
+        # Return all client roles
         result = {}
-        for client, access in claims.resource_access.items():
+        for client_id, access in self.resource_access.items():
             roles = access.get("roles", [])
             if roles:
-                result[client] = roles
+                result[client_id] = roles
         return result
 ```
 
-**Step 3.4: Create services __init__.py**
+**Step 3.4: Create Keycloak Provider - Parser**
+
+`src/miraveja_auth/infrastructure/providers/keycloak/parser.py`:
+
+```python
+"""Keycloak claims parser."""
+from typing import Dict, Any
+from ....domain.interfaces import IClaimsParser
+from ....domain.exceptions import TokenInvalidError
+from .claims import KeycloakClaims
+
+
+class KeycloakClaimsParser(IClaimsParser):
+    """Parser for Keycloak JWT payloads.
+
+    Converts raw JWT payload dictionaries into KeycloakClaims objects.
+    """
+
+    def parse(self, payload: Dict[str, Any]) -> KeycloakClaims:
+        """Parse JWT payload into KeycloakClaims.
+
+        Args:
+            payload: Raw JWT token payload (decoded dict).
+
+        Returns:
+            KeycloakClaims instance.
+
+        Raises:
+            TokenInvalidError: Payload structure is invalid.
+        """
+        try:
+            return KeycloakClaims(**payload)
+        except Exception as e:
+            raise TokenInvalidError(f"Failed to parse Keycloak claims: {str(e)}")
+```
+
+**Step 3.5: Create Keycloak Provider **init**.py**
+
+`src/miraveja_auth/infrastructure/providers/keycloak/__init__.py`:
+
+```python
+"""Keycloak provider implementation."""
+from .claims import KeycloakClaims
+from .parser import KeycloakClaimsParser
+
+__all__ = ["KeycloakClaims", "KeycloakClaimsParser"]
+```
+
+**Step 3.6: Create providers **init**.py**
+
+`src/miraveja_auth/infrastructure/providers/__init__.py`:
+
+```python
+"""Provider-specific implementations."""
+from .keycloak import KeycloakClaims, KeycloakClaimsParser
+
+__all__ = ["KeycloakClaims", "KeycloakClaimsParser"]
+```
+
+**Step 3.7: Create services **init**.py**
 
 `src/miraveja_auth/infrastructure/services/__init__.py`:
+
 ```python
 """Infrastructure services."""
 from .oidc_discovery import OIDCDiscoveryService
-from .keycloak_role_mapper import KeycloakRoleMapper
 
-__all__ = ["OIDCDiscoveryService", "KeycloakRoleMapper"]
+__all__ = ["OIDCDiscoveryService"]
 ```
 
 ---
@@ -874,6 +1001,7 @@ __all__ = ["OIDCDiscoveryService", "KeycloakRoleMapper"]
 First, add the interface to domain layer:
 
 `src/miraveja_auth/domain/interfaces.py` (add to existing file):
+
 ```python
 class IAuthenticator(ABC):
     """Authenticator interface for dependency injection frameworks."""
@@ -928,6 +1056,7 @@ class IAuthenticator(ABC):
 **Step 4.2: Create Base FastAPI Authenticator**
 
 `src/miraveja_auth/infrastructure/fastapi_integration/base.py`:
+
 ```python
 """Base FastAPI authenticator."""
 from typing import Callable
@@ -1031,6 +1160,7 @@ class BaseFastAPIAuthenticator(IAuthenticator):
 **Step 4.3: Create HTTP Authenticator**
 
 `src/miraveja_auth/infrastructure/fastapi_integration/http_authenticator.py`:
+
 ```python
 """HTTP-based FastAPI authenticator."""
 from typing import Optional
@@ -1099,6 +1229,7 @@ class HTTPAuthenticator(BaseFastAPIAuthenticator):
 **Step 4.4: Create WebSocket Authenticator**
 
 `src/miraveja_auth/infrastructure/fastapi_integration/websocket_authenticator.py`:
+
 ```python
 """WebSocket-based FastAPI authenticator."""
 from typing import Optional
@@ -1156,6 +1287,7 @@ class WebSocketAuthenticator(BaseFastAPIAuthenticator):
 **Step 4.5: Create Unified Authenticator (Convenience)**
 
 `src/miraveja_auth/infrastructure/fastapi_integration/authenticator.py`:
+
 ```python
 """Unified FastAPI authenticator with both HTTP and WebSocket support."""
 from ...domain.interfaces import IOAuth2Provider
@@ -1225,9 +1357,10 @@ class FastAPIAuthenticator:
         return self._http.require_client_role(client, role)
 ```
 
-**Step 4.6: Create fastapi_integration __init__.py**
+**Step 4.6: Create fastapi_integration **init**.py**
 
 `src/miraveja_auth/infrastructure/fastapi_integration/__init__.py`:
+
 ```python
 """FastAPI integration."""
 from .base import BaseFastAPIAuthenticator
@@ -1250,6 +1383,7 @@ __all__ = [
 **Step 5.1: Create MockOAuth2Provider**
 
 `src/miraveja_auth/infrastructure/testing/mock_provider.py`:
+
 ```python
 """Mock OAuth2 provider for testing."""
 import time
@@ -1349,9 +1483,10 @@ class MockOAuth2Provider(IOAuth2Provider):
         return user
 ```
 
-**Step 5.2: Create testing __init__.py**
+**Step 5.2: Create testing **init**.py**
 
 `src/miraveja_auth/infrastructure/testing/__init__.py`:
+
 ```python
 """Testing utilities."""
 from .mock_provider import MockOAuth2Provider
@@ -1363,17 +1498,20 @@ __all__ = ["MockOAuth2Provider"]
 
 ### Phase 6: Public API & Package Configuration
 
-**Step 6.1: Create Infrastructure __init__.py**
+**Step 6.1: Create Infrastructure **init**.py**
 
 `src/miraveja_auth/infrastructure/__init__.py`:
+
 ```python
 """Infrastructure layer - External integrations."""
-from .services import OIDCDiscoveryService, KeycloakRoleMapper
+from .services import OIDCDiscoveryService
+from .providers import KeycloakClaims, KeycloakClaimsParser
 from .testing import MockOAuth2Provider
 
 __all__ = [
     "OIDCDiscoveryService",
-    "KeycloakRoleMapper",
+    "KeycloakClaims",
+    "KeycloakClaimsParser",
     "MockOAuth2Provider",
 ]
 
@@ -1389,9 +1527,10 @@ except ImportError:
     pass  # FastAPI not installed
 ```
 
-**Step 6.2: Create Main __init__.py**
+**Step 6.2: Create Main **init**.py**
 
 `src/miraveja_auth/__init__.py`:
+
 ```python
 """miraveja-authentication - OAuth2/OIDC authentication library.
 
@@ -1403,11 +1542,11 @@ __version__ = "0.1.0"
 # Domain exports
 from .domain import (
     User,
-    Claims,
+    BaseClaims,
     Token,
     Role,
     IOAuth2Provider,
-    IRoleMapper,
+    IClaimsParser,
     IOIDCDiscoveryService,
     IAuthenticator,
     AuthenticationError,
@@ -1423,7 +1562,8 @@ from .application import OAuth2Configuration, OAuth2Provider
 # Infrastructure exports
 from .infrastructure import (
     OIDCDiscoveryService,
-    KeycloakRoleMapper,
+    KeycloakClaims,
+    KeycloakClaimsParser,
     MockOAuth2Provider,
 )
 
@@ -1432,11 +1572,11 @@ __all__ = [
     "__version__",
     # Domain
     "User",
-    "Claims",
+    "BaseClaims",
     "Token",
     "Role",
     "IOAuth2Provider",
-    "IRoleMapper",
+    "IClaimsParser",
     "IOIDCDiscoveryService",
     "IAuthenticator",
     "AuthenticationError",
@@ -1449,7 +1589,8 @@ __all__ = [
     "OAuth2Provider",
     # Infrastructure
     "OIDCDiscoveryService",
-    "KeycloakRoleMapper",
+    "KeycloakClaims",
+    "KeycloakClaimsParser",
     "MockOAuth2Provider",
 ]
 
@@ -1472,18 +1613,21 @@ except ImportError:
 **Step 7.1: Unit Tests - Domain**
 
 Create comprehensive tests for:
+
 - `test_models.py`: User role methods, Claims parsing, model validation
 - `test_exceptions.py`: Exception creation and attributes
 
 **Step 7.2: Unit Tests - Application**
 
 Create tests for:
+
 - `test_configuration.py`: Configuration validation, from_env() method
 - `test_oauth2_provider.py`: Token validation flow, role mapper integration
 
 **Step 7.3: Unit Tests - Infrastructure**
 
 Create tests for:
+
 - `test_oidc_discovery.py`: OIDC discovery, JWKS retrieval, caching
 - `test_keycloak_role_mapper.py`: Role extraction from various claim structures
 - `test_http_authenticator.py`: HTTP Bearer token extraction, validation
@@ -1494,6 +1638,7 @@ Create tests for:
 **Step 7.4: Integration Tests**
 
 Create end-to-end tests for:
+
 - `test_token_validation.py`: Full validation flow
 - `test_role_authorization.py`: Role checking and enforcement
 - `test_fastapi_integration.py`: FastAPI app with authentication
@@ -1507,6 +1652,7 @@ Create end-to-end tests for:
 **Step 8.1: Create Examples**
 
 `examples/basic_usage.py`:
+
 ```python
 """Basic usage example."""
 import asyncio
@@ -1514,6 +1660,7 @@ from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
     OIDCDiscoveryService,
+    KeycloakClaimsParser,
 )
 
 
@@ -1524,9 +1671,10 @@ async def main():
         client_id="my-client",
     )
 
-    # Create discovery service and provider
+    # Create discovery service, claims parser, and provider
     discovery = OIDCDiscoveryService(config)
-    provider = OAuth2Provider(config, discovery)
+    parser = KeycloakClaimsParser()
+    provider = OAuth2Provider(config, discovery, parser)
 
     # Validate token
     token = "eyJhbGc..."
@@ -1548,13 +1696,15 @@ if __name__ == "__main__":
 ```
 
 `examples/fastapi_app.py`:
+
 ```python
 """FastAPI application example."""
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, WebSocket
 from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
     OIDCDiscoveryService,
+    KeycloakClaimsParser,
 )
 from miraveja_auth.infrastructure import FastAPIAuthenticator
 from miraveja_auth.domain import User
@@ -1564,7 +1714,8 @@ app = FastAPI()
 # Setup authentication
 config = OAuth2Configuration.from_env()
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 authenticator = FastAPIAuthenticator(provider)
 
 
@@ -1599,42 +1750,111 @@ async def websocket_endpoint(
     # ... handle WebSocket communication
 ```
 
-`examples/custom_role_mapper.py`:
+`examples/custom_claims_parser.py`:
+
 ```python
-"""Custom role mapper example."""
-from typing import List, Dict
+"""Custom claims parser example for Auth0.
+
+This example shows how to create a custom Claims class and parser
+for Auth0 (or any other OAuth2/OIDC provider).
+"""
+from typing import List, Dict, Optional, Any
 from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
-    IRoleMapper,
-    Claims,
+    OIDCDiscoveryService,
+    BaseClaims,
+    IClaimsParser,
 )
+from miraveja_auth.domain.exceptions import TokenInvalidError
 
 
-class Auth0RoleMapper(IRoleMapper):
-    """Custom role mapper for Auth0."""
+class Auth0Claims(BaseClaims):
+    """Auth0-specific JWT token claims.
 
-    def extract_realm_roles(self, claims: Claims) -> List[str]:
-        # Auth0 stores roles in custom namespace
-        return claims.extra.get("https://myapp.com/roles", [])
+    Auth0 stores roles/permissions differently than Keycloak.
+    Typically uses custom namespace claims.
+    """
+    # Auth0-specific fields
+    permissions: Optional[List[str]] = None  # Auth0 permissions
 
-    def extract_client_roles(self, claims: Claims, client: str) -> List[str]:
+    # Custom namespace (configure based on your Auth0 setup)
+    # e.g., "https://myapp.com/roles"
+
+    def get_realm_roles(self) -> List[str]:
+        """Extract roles from Auth0 claims.
+
+        Auth0 typically uses 'permissions' or custom namespace claims.
+        Adjust based on your Auth0 configuration.
+        """
+        # Option 1: Use permissions as roles
+        if self.permissions:
+            return self.permissions
+
+        # Option 2: Use custom namespace
+        # Pydantic stores extra fields in __pydantic_extra__
+        custom_roles = getattr(self, "https://myapp.com/roles", None)
+        if custom_roles:
+            return custom_roles
+
         return []
 
-    def extract_all_client_roles(self, claims: Claims) -> Dict[str, List[str]]:
+    def get_client_roles(self, client: Optional[str] = None) -> Dict[str, List[str]]:
+        """Extract client roles from Auth0 claims.
+
+        Auth0 typically doesn't use client-specific roles.
+        Return empty dict or implement based on your setup.
+        """
         return {}
 
 
-# Use custom mapper
-config = OAuth2Configuration(
-    issuer="https://tenant.auth0.com/",
-    client_id="my-client",
-)
-discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery, role_mapper=Auth0RoleMapper())
+class Auth0ClaimsParser(IClaimsParser):
+    """Parser for Auth0 JWT payloads."""
+
+    def parse(self, payload: Dict[str, Any]) -> Auth0Claims:
+        """Parse JWT payload into Auth0Claims.
+
+        Args:
+            payload: Raw JWT token payload (decoded dict).
+
+        Returns:
+            Auth0Claims instance.
+
+        Raises:
+            TokenInvalidError: Payload structure is invalid.
+        """
+        try:
+            return Auth0Claims(**payload)
+        except Exception as e:
+            raise TokenInvalidError(f"Failed to parse Auth0 claims: {str(e)}")
+
+
+# Usage
+async def main():
+    config = OAuth2Configuration(
+        issuer="https://your-tenant.auth0.com/",
+        client_id="your-auth0-client-id",
+    )
+
+    discovery = OIDCDiscoveryService(config)
+    parser = Auth0ClaimsParser()  # Use Auth0 parser
+    provider = OAuth2Provider(config, discovery, parser)
+
+    # Validate token
+    token = "eyJhbGc..."
+    user = await provider.validate_token(token)
+
+    print(f"User: {user.username}")
+    print(f"Permissions: {user.realm_roles}")
+
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
 ```
 
 `examples/separate_authenticators.py`:
+
 ```python
 """Using separate HTTP and WebSocket authenticators."""
 from fastapi import FastAPI, Depends, WebSocket
@@ -1642,6 +1862,7 @@ from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
     OIDCDiscoveryService,
+    KeycloakClaimsParser,
 )
 from miraveja_auth.infrastructure import HTTPAuthenticator, WebSocketAuthenticator
 from miraveja_auth.domain import User
@@ -1651,7 +1872,8 @@ app = FastAPI()
 # Setup
 config = OAuth2Configuration.from_env()
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 
 # Create separate authenticators
 http_auth = HTTPAuthenticator(provider)
@@ -1707,6 +1929,7 @@ async def public_optional(user: User = Depends(http_auth.get_current_user_option
 **Step 9.1: Setup pre-commit**
 
 `.pre-commit-config.yaml`:
+
 ```yaml
 repos:
   - repo: https://github.com/psf/black
@@ -1735,6 +1958,7 @@ repos:
 **Step 9.2: Setup GitHub Actions**
 
 `.github/workflows/ci.yml`:
+
 ```yaml
 name: CI
 
@@ -1773,47 +1997,73 @@ jobs:
 ## Implementation Checklist
 
 ### Domain Layer
-- [ ] Create models.py (User, Claims, Token, Role)
-- [ ] Create interfaces.py (IOAuth2Provider, IRoleMapper)
+
+- [ ] Create models.py (User, BaseClaims, Token, Role)
+- [ ] Create interfaces.py (IOAuth2Provider, IClaimsParser, IOIDCDiscoveryService, IAuthenticator)
 - [ ] Create exceptions.py (all custom exceptions)
 - [ ] Write unit tests for domain layer
 - [ ] Verify 100% domain coverage
 
 ### Application Layer
+
 - [ ] Create configuration.py (OAuth2Configuration)
 - [ ] Write unit tests for configuration
 - [ ] Test from_env() method
 
 ### Application Layer (continued)
-- [ ] Create OAuth2Provider (use case)
-- [ ] Write unit tests for OAuth2Provider
-- [ ] Test token validation flow
 
-### Infrastructure Layer
+- [ ] Create OAuth2Provider (use case with claims_parser parameter)
+- [ ] Write unit tests for OAuth2Provider
+- [ ] Test token validation flow with claims parser
+
+### Infrastructure Layer - Services
+
 - [ ] Create IOIDCDiscoveryService interface (domain)
 - [ ] Create IAuthenticator interface (domain)
-- [ ] Create OIDCDiscoveryService
-- [ ] Create KeycloakRoleMapper
+- [ ] Create OIDCDiscoveryService (generic)
+- [ ] Write unit tests for OIDCDiscoveryService
+
+### Infrastructure Layer - Keycloak Provider
+
+- [ ] Create KeycloakClaims (extends BaseClaims)
+- [ ] Implement get_realm_roles() and get_client_roles()
+- [ ] Create KeycloakClaimsParser (implements IClaimsParser)
+- [ ] Write unit tests for KeycloakClaims
+- [ ] Write unit tests for KeycloakClaimsParser
+
+### Infrastructure Layer - FastAPI Integration
+
 - [ ] Create BaseFastAPIAuthenticator
 - [ ] Create HTTPAuthenticator
 - [ ] Create WebSocketAuthenticator
 - [ ] Create FastAPIAuthenticator (unified)
+- [ ] Write unit tests for authenticators
+
+### Infrastructure Layer - Testing
+
 - [ ] Create MockOAuth2Provider
-- [ ] Write unit tests for each component
+- [ ] Write unit tests for mock provider
 - [ ] Verify 100% infrastructure coverage
 
 ### Integration
-- [ ] Write integration tests
-- [ ] Test end-to-end flows
-- [ ] Test FastAPI integration
+
+- [ ] Write integration tests (OAuth2Provider + KeycloakClaimsParser)
+- [ ] Test end-to-end token validation flow
+- [ ] Test FastAPI integration with Keycloak
+- [ ] Test role extraction from Keycloak tokens
 
 ### Documentation
-- [ ] Create examples
+
+- [ ] Create basic_usage.py example
+- [ ] Create fastapi_app.py example
+- [ ] Create custom_claims_parser.py example (Auth0)
+- [ ] Create separate_authenticators.py example
 - [ ] Write comprehensive README
 - [ ] Add inline documentation
 - [ ] Create API reference
 
 ### Quality Assurance
+
 - [ ] Setup pre-commit hooks
 - [ ] Configure GitHub Actions
 - [ ] Achieve 100% test coverage
@@ -1825,6 +2075,7 @@ jobs:
 ## Success Criteria
 
 ✅ **Code Quality**
+
 - 100% test coverage
 - All tests passing
 - No linting errors
@@ -1832,12 +2083,14 @@ jobs:
 - Google-style docstrings
 
 ✅ **Architecture**
+
 - Clear separation of layers
 - No circular dependencies
 - Proper encapsulation
 - Full OOP (no loose functions)
 
 ✅ **Functionality**
+
 - Token validation working
 - Role checking working
 - FastAPI integration working
@@ -1845,12 +2098,14 @@ jobs:
 - Works with multiple providers
 
 ✅ **Documentation**
+
 - Comprehensive README
 - Working examples
 - Clear API documentation
 - Architecture explanation
 
 ✅ **Developer Experience**
+
 - Easy to install
 - Simple API
 - Clear error messages
@@ -1864,6 +2119,8 @@ jobs:
 2. **Silent Library**: No print() or logging.* calls in production code
 3. **Async First**: All I/O operations are async
 4. **Type Safe**: Complete type hints for IDE support
-5. **Provider Agnostic**: Works with any OAuth2/OIDC compliant provider
-6. **Extensible**: Easy to add custom role mappers
-7. **Testable**: Mock provider included, 100% coverage achievable
+5. **Provider Agnostic**: Works with any OAuth2/OIDC compliant provider via IClaimsParser interface
+6. **Extensible**: Easy to add new providers (create Claims + Parser classes in infrastructure/providers)
+7. **Self-Extracting Claims**: Each Claims class knows how to extract its own roles (no separate mapper needed)
+8. **Clean Architecture**: Provider-specific code isolated in infrastructure/providers/\{provider\}/
+9. **Testable**: Mock provider included, 100% coverage achievable
