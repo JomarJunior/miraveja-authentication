@@ -1,11 +1,5 @@
-"""
-Testing Utilities
+"""Testing utilities."""
 
-Mock implementations and testing helpers.
-"""
+from .mock_provider import MockOAuth2Provider
 
-from miraveja_auth.infrastructure.testing.mock_provider import MockOAuth2Provider
-
-__all__ = [
-    "MockOAuth2Provider",
-]
+__all__ = ["MockOAuth2Provider"]
