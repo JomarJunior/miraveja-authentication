@@ -1,0 +1,119 @@
+name: Publish to PyPI
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to publish to'
+        required: true
+        type: choice
+        options:
+          - testpypi
+          - pypi
+
+jobs:
+  # Build Job: Creates distribution packages (.tar.gz and .whl) from source code.
+  # Rationale:
+  #   - Separates build from publish for better security and reusability
+  #   - Built artifacts are shared across all publish jobs via GitHub artifacts
+  #   - Ensures consistent packages across TestPyPI, PyPI, and GitHub releases
+  #   - Single source of truth: build once, publish multiple times
+  #   - Fails fast if build has issues before attempting any publishes
+  build:
+    name: Build Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.0.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
+
+      - name: Build package
+        run: poetry build
+
+      - name: Store distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  # Publish to TestPyPI Job: Uploads package to PyPI's testing instance.
+  # Rationale:
+  #   - Manual trigger only (workflow_dispatch) - prevents accidental publishes
+  #   - Allows testing package installation and metadata before production
+  #   - Uses skip-existing to allow multiple test uploads without errors
+  #   - Validates trusted publishing configuration before PyPI deployment
+  #   - Isolated from production - failures here don't affect real releases
+  #   - Useful for verifying README rendering, dependencies, and install process
+  publish-to-testpypi:
+    name: Publish to TestPyPI
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'testpypi'
+    needs:
+      - build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/miraveja-auth
+
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Download distribution packages
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  # Publish to PyPI Job: Uploads package to production PyPI index.
+  # Rationale:
+  #   - Dual trigger: automatic on GitHub releases OR manual via workflow_dispatch
+  #   - Automatic releases ensure version tags match published versions
+  #   - Manual trigger provides emergency hotfix capability if needed
+  #   - Uses trusted publishing (OIDC) - no API tokens, more secure
+  #   - Environment protection ensures only approved publishes reach production
+  #   - Once published, versions are immutable (cannot be overwritten)
+  #   - Makes package publicly available via `pip install miraveja-auth`
+  publish-to-pypi:
+    name: Publish to PyPI
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pypi')
+    needs:
+      - build
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/miraveja-auth
+
+    permissions:
+      id-token: write  # IMPORTANT: mandatory for trusted publishing
+
+    steps:
+      - name: Download distribution packages
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
