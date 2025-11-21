@@ -58,15 +58,15 @@ miraveja-authentication follows Domain-Driven Design and Hexagonal Architecture 
 ```text
 src/miraveja_auth/
 ├── 🧠 domain/           # Core business logic
-│                      # - Models: User, Claims, Token, Role
-│                      # - Interfaces: IOAuth2Provider, IRoleMapper, IOIDCDiscoveryService, IAuthenticator
-│                      # - Exceptions: AuthenticationError, AuthorizationError, etc.
+│                      # - Models: User, BaseClaims, Token, Role
+│                      # - Interfaces: IOAuth2Provider, IClaimsParser, IOIDCDiscoveryService, IAuthenticator
+│                      # - Exceptions: AuthenticationException, AuthorizationException, etc.
 ├── 🎬 application/      # Use cases and orchestration
 │                      # - OAuth2Configuration: Config validation and management
 │                      # - OAuth2Provider: Token validation use case
 └── 🔌 infrastructure/   # External integrations
                        # - OIDCDiscoveryService: HTTP-based OIDC discovery and JWKS
-                       # - KeycloakRoleMapper: Keycloak role extraction
+                       # - KeycloakClaimsParser: Keycloak JWT claims parser
                        # - FastAPI authenticators: HTTP, WebSocket, unified
                        # - MockOAuth2Provider: Testing utilities
 ```
@@ -112,6 +112,7 @@ from miraveja_auth import (
     OAuth2Provider,
     OIDCDiscoveryService,
 )
+from miraveja_auth.infrastructure.providers.keycloak import KeycloakClaimsParser
 
 # Configure OAuth2/OIDC provider
 config = OAuth2Configuration(
@@ -120,9 +121,10 @@ config = OAuth2Configuration(
     client_secret="your-secret",
 )
 
-# Create discovery service and provider
+# Create discovery service, claims parser, and provider
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 
 # Validate token
 async def authenticate_user(token: str):
@@ -148,7 +150,8 @@ os.environ["OAUTH2_CLIENT_SECRET"] = "your-secret"
 # Load configuration from environment
 config = OAuth2Configuration.from_env()
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 ```
 
 ### Role-Based Authorization
@@ -158,23 +161,25 @@ from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
     OIDCDiscoveryService,
-    AuthorizationError,
+    AuthorizationException,
 )
+from miraveja_auth.infrastructure.providers.keycloak import KeycloakClaimsParser
 
 async def process_admin_action(token: str):
     discovery = OIDCDiscoveryService(config)
-    provider = OAuth2Provider(config, discovery)
+    parser = KeycloakClaimsParser()
+    provider = OAuth2Provider(config, discovery, parser)
     user = await provider.validate_token(token)
 
     # Check role (returns bool)
     if user.has_realm_role("admin"):
         print("User is admin")
 
-    # Require role (raises AuthorizationError if missing)
+    # Require role (raises AuthorizationException if missing)
     try:
         user.require_realm_role("admin")
         # Proceed with admin action
-    except AuthorizationError as e:
+    except AuthorizationException as e:
         print(f"Access denied: {e}")
 ```
 
@@ -189,7 +194,8 @@ from miraveja_auth import (
 
 async def process_api_request(token: str):
     discovery = OIDCDiscoveryService(config)
-    provider = OAuth2Provider(config, discovery)
+    parser = KeycloakClaimsParser()
+    provider = OAuth2Provider(config, discovery, parser)
     user = await provider.validate_token(token)
 
     # Check client-specific role
@@ -219,12 +225,13 @@ app = FastAPI()
 # Configure authentication
 config = OAuth2Configuration.from_env()
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 authenticator = FastAPIAuthenticator(provider)
 
 # Use authentication dependency
 @app.get("/users/me")
-async def get_user_profile(user = Depends(authenticator.get_current_user)):
+async def get_user_profile(user = Depends(authenticator.http.get_current_user)):
     return {
         "id": user.id,
         "username": user.username,
@@ -243,12 +250,12 @@ from miraveja_auth.infrastructure import FastAPIAuthenticator
 authenticator = FastAPIAuthenticator(provider)
 
 @app.get("/admin/users")
-async def list_all_users(user = Depends(authenticator.require_realm_role("admin"))):
+async def list_all_users(user = Depends(authenticator.http.require_realm_role("admin"))):
     # Only users with 'admin' realm role can access
     return {"users": [...]}
 
 @app.post("/api/documents")
-async def create_document(user = Depends(authenticator.require_client_role("api-client", "write:documents"))):
+async def create_document(user = Depends(authenticator.http.require_client_role("api-client", "write:documents"))):
     # Only users with 'write:documents' role for 'api-client' can create
     return {"document_id": 123}
 ```
@@ -263,7 +270,7 @@ from miraveja_auth.domain import User
 authenticator = FastAPIAuthenticator(provider)
 
 @app.get("/public/content")
-async def get_content(user: Optional[User] = Depends(authenticator.get_current_user_optional)):
+async def get_content(user: Optional[User] = Depends(authenticator.http.get_current_user_optional)):
     if user:
         # Return personalized content for authenticated users
         return {"content": f"Welcome back, {user.username}!"}
@@ -281,9 +288,10 @@ from miraveja_auth import (
     OAuth2Configuration,
     OAuth2Provider,
     OIDCDiscoveryService,
-    AuthenticationError,
-    AuthorizationError,
+    AuthenticationException,
+    AuthorizationException,
 )
+from miraveja_auth.infrastructure.providers.keycloak import KeycloakClaimsParser
 from miraveja_auth.infrastructure import FastAPIAuthenticator
 
 # Initialize FastAPI app
@@ -296,7 +304,8 @@ config = OAuth2Configuration(
     client_secret="secret",
 )
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 authenticator = FastAPIAuthenticator(provider)
 
 # Public endpoint (no authentication)
@@ -306,7 +315,7 @@ async def root():
 
 # Protected endpoint (authentication required)
 @app.get("/profile")
-async def get_profile(user = Depends(authenticator.get_current_user)):
+async def get_profile(user = Depends(authenticator.http.get_current_user)):
     return {
         "id": user.id,
         "username": user.username,
@@ -315,14 +324,14 @@ async def get_profile(user = Depends(authenticator.get_current_user)):
 
 # Admin endpoint (requires 'admin' realm role)
 @app.get("/admin/dashboard")
-async def admin_dashboard(user = Depends(authenticator.require_realm_role("admin"))):
+async def admin_dashboard(user = Depends(authenticator.http.require_realm_role("admin"))):
     return {"message": f"Welcome to admin dashboard, {user.username}"}
 
 # API endpoint (requires client-specific role)
 @app.post("/api/documents")
 async def create_document(
     document: dict,
-    user = Depends(authenticator.require_client_role("my-api", "write:documents"))
+    user = Depends(authenticator.http.require_client_role("my-api", "write:documents"))
 ):
     return {
         "id": 123,
@@ -332,13 +341,13 @@ async def create_document(
 
 # Mixed endpoint (optional authentication)
 @app.get("/content")
-async def get_content(user = Depends(authenticator.get_current_user_optional)):
+async def get_content(user = Depends(authenticator.http.get_current_user_optional)):
     if user:
         return {"message": f"Hello, {user.username}!", "premium": True}
     return {"message": "Hello, guest!", "premium": False}
 
 # Global exception handlers
-@app.exception_handler(AuthenticationError)
+@app.exception_handler(AuthenticationException)
 async def authentication_error_handler(request, exc):
     return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -346,7 +355,7 @@ async def authentication_error_handler(request, exc):
         headers={"WWW-Authenticate": "Bearer"},
     )
 
-@app.exception_handler(AuthorizationError)
+@app.exception_handler(AuthorizationException)
 async def authorization_error_handler(request, exc):
     return HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
@@ -369,12 +378,13 @@ app = FastAPI()
 # Setup
 config = OAuth2Configuration.from_env()
 discovery = OIDCDiscoveryService(config)
-provider = OAuth2Provider(config, discovery)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 authenticator = FastAPIAuthenticator(provider)
 
 # HTTP endpoint - uses Authorization header
 @app.get("/api/data")
-async def get_data(user: User = Depends(authenticator.get_current_user)):
+async def get_data(user: User = Depends(authenticator.http.get_current_user)):
     return {"data": "...", "user": user.username}
 
 # WebSocket endpoint - uses query parameter (?token=...)
@@ -450,7 +460,7 @@ config = OAuth2Configuration(
     verify_ssl=True,                                         # Verify SSL certificates (default: True)
     public_key=None,                                         # Static public key (optional, for offline validation)
     token_verification_algorithm="RS256",                    # JWT algorithm (default: RS256)
-    token_minimum_ttl=60,                                    # Minimum token TTL in seconds (default: 60)
+    token_minimum_ttl_seconds=60,                            # Minimum token TTL in seconds (default: 60)
 )
 ```
 
@@ -557,7 +567,7 @@ Pydantic model for OAuth2/OIDC configuration with validation.
 - `verify_ssl: bool` - Verify SSL certificates (default: True)
 - `public_key: Optional[str]` - Static public key for offline validation
 - `token_verification_algorithm: str` - JWT algorithm (default: RS256)
-- `token_minimum_ttl: int` - Minimum token TTL in seconds (default: 60)
+- `token_minimum_ttl_seconds: int` - Minimum token TTL in seconds (default: 60)
 
 **Class Methods:**
 
@@ -580,13 +590,13 @@ Token validation use case in the application layer. Orchestrates the validation 
 OAuth2Provider(
     config: OAuth2Configuration,
     discovery_service: IOIDCDiscoveryService,
-    role_mapper: Optional[IRoleMapper] = None
+    claims_parser: IClaimsParser
 )
 ```
 
 - `config`: OAuth2Configuration instance
 - `discovery_service`: OIDC discovery service (e.g., OIDCDiscoveryService)
-- `role_mapper`: Custom role mapper (default: KeycloakRoleMapper)
+- `claims_parser`: Claims parser for converting JWT payload to BaseClaims (e.g., KeycloakClaimsParser)
 
 **Methods:**
 
@@ -595,7 +605,7 @@ OAuth2Provider(
   - Checks expiration and minimum TTL
   - Verifies signature (offline with static key or online with JWKS)
   - Parses claims into User model with roles
-  - Raises: `TokenExpiredError`, `TokenInvalidError`, `AuthenticationError`
+  - Raises: `TokenExpiredException`, `TokenInvalidException`, `AuthenticationException`
 
 ### OIDCDiscoveryService
 
@@ -612,12 +622,12 @@ OIDCDiscoveryService(config: OAuth2Configuration)
 - `async get_signing_key(token: str) -> Any`
   - Gets signing key for JWT validation from JWKS
   - Caches keys for 1 hour
-  - Raises: `AuthenticationError`
+  - Raises: `AuthenticationException`
 
 - `async discover_configuration() -> Dict[str, Any]`
   - Fetches OIDC discovery configuration from `.well-known/openid-configuration`
   - Returns: OIDC configuration dictionary
-  - Raises: `AuthenticationError`
+  - Raises: `AuthenticationException`
 
 ### Domain Models
 
@@ -640,23 +650,28 @@ User representation with authentication claims and roles.
 **Instance Methods:**
 
 - `has_realm_role(role: str) -> bool` - Check if user has a specific realm role
-- `require_realm_role(role: str) -> None` - Require user to have a realm role (raises AuthorizationError if missing)
+- `require_realm_role(role: str) -> None` - Require user to have a realm role (raises AuthorizationException if missing)
 - `has_client_role(client: str, role: str) -> bool` - Check if user has a client-specific role
-- `require_client_role(client: str, role: str) -> None` - Require user to have a client role (raises AuthorizationError if missing)
+- `require_client_role(client: str, role: str) -> None` - Require user to have a client role (raises AuthorizationException if missing)
 
-#### Claims
+#### BaseClaims
 
-JWT token claims representation.
+Abstract base class for JWT token claims representation.
 
 **Fields:**
 
 - `iss: str` - Issuer
 - `sub: str` - Subject (user ID)
-- `aud: str | List[str]` - Audience
+- `aud: str` - Audience
 - `exp: int` - Expiration timestamp
 - `iat: int` - Issued at timestamp
 - Additional OIDC standard claims (email, preferred_username, etc.)
-- Keycloak extensions (realm_access, resource_access)
+
+**Abstract Methods:**
+
+- `get_roles() -> List[str]` - Extract realm/global roles from claims
+- `get_client_roles(client_id: str) -> List[str]` - Extract roles for specific client
+- `get_all_client_roles() -> Dict[str, List[str]]` - Extract all client roles
 
 #### Token
 
@@ -691,8 +706,7 @@ Unified authenticator providing both HTTP and WebSocket authentication.
 
 ```python
 FastAPIAuthenticator(
-    provider: IOAuth2Provider,
-    role_mapper: Optional[IRoleMapper] = None
+    provider: IOAuth2Provider
 )
 ```
 
@@ -735,8 +749,7 @@ HTTP-specific authenticator extracting JWT from `Authorization: Bearer` header.
 
 ```python
 HTTPAuthenticator(
-    provider: IOAuth2Provider,
-    role_mapper: Optional[IRoleMapper] = None
+    provider: IOAuth2Provider
 )
 ```
 
@@ -755,8 +768,7 @@ WebSocket-specific authenticator extracting JWT from query parameter `?token=...
 
 ```python
 WebSocketAuthenticator(
-    provider: IOAuth2Provider,
-    role_mapper: Optional[IRoleMapper] = None
+    provider: IOAuth2Provider
 )
 ```
 
@@ -769,28 +781,33 @@ WebSocketAuthenticator(
 
 **Note:** WebSocket authentication extracts the token from the query parameter (e.g., `ws://localhost:8000/ws?token=eyJ...`) since WebSockets don't support custom headers in browsers.
 
-#### KeycloakRoleMapper
+#### KeycloakClaimsParser
 
-Role mapper for Keycloak-specific token claims.
+Claims parser for Keycloak-specific JWT tokens.
 
 **Constructor:**
 
 ```python
-KeycloakRoleMapper()
+KeycloakClaimsParser()
 ```
 
 **Methods:**
 
-- `extract_realm_roles(claims: Claims) -> List[str]` - Extract roles from `realm_access.roles`
-- `extract_client_roles(claims: Claims) -> Dict[str, List[str]]` - Extract client roles from `resource_access`
+- `parse(payload: Dict[str, Any]) -> KeycloakClaims` - Parse raw JWT payload into KeycloakClaims
+
+**KeycloakClaims Methods:**
+
+- `get_roles() -> List[str]` - Extract realm roles from `realm_access.roles`
+- `get_client_roles(client_id: str) -> List[str]` - Extract roles for specific client from `resource_access`
+- `get_all_client_roles() -> Dict[str, List[str]]` - Extract all client roles from `resource_access`
 
 **Usage:**
 
 ```python
-from miraveja_auth.infrastructure import KeycloakRoleMapper
+from miraveja_auth.infrastructure.providers.keycloak import KeycloakClaimsParser
 
-mapper = KeycloakRoleMapper()
-provider = OAuth2Provider(config, discovery_service, role_mapper=mapper)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery_service, parser)
 ```
 
 #### MockOAuth2Provider
@@ -806,8 +823,8 @@ MockOAuth2Provider()
 **Methods:**
 
 - `add_user(user_id: str, username: str, email: Optional[str] = None, realm_roles: List[str] = [], client_roles: Dict[str, List[str]] = {})` - Add test user
-- `set_token_for_user(user_id: str) -> str` - Generate mock token for user
-- `simulate_failure(error_type: Literal["expired", "invalid", "missing"])` - Simulate authentication failures
+- `set_token_for_user(user_id: str, token: Optional[str] = None) -> str` - Generate mock token for user
+- `simulate_failure(mode: Optional[str])` - Simulate authentication failures (modes: 'expired', 'invalid', or None to clear)
 - `validate_token(token: str) -> User` - Validate mock token
 - `get_user_by_id(user_id: str) -> User` - Get user directly by ID
 
@@ -825,37 +842,52 @@ user = await mock_provider.validate_token(token)
 
 ### Exceptions
 
-- `AuthenticationError` - Base exception for authentication failures
-- `TokenExpiredError` - Token has expired (includes expiration time and TTL)
-- `TokenInvalidError` - Token signature or structure is invalid
-- `AuthorizationError` - User lacks required permissions
-- `ConfigurationError` - Invalid configuration
+- `AuthenticationException` - Base exception for authentication failures
+- `TokenExpiredException` - Token has expired (includes expiration time and TTL)
+- `TokenInvalidException` - Token signature or structure is invalid
+- `AuthorizationException` - User lacks required permissions
+- `ConfigurationException` - Invalid configuration
 
 ## 🔥 Advanced Usage
 
-### Custom Role Mapper
+### Custom Claims Parser
 
-Create custom role mappers for different OAuth2/OIDC providers:
+Create custom claims parsers for different OAuth2/OIDC providers:
 
 ```python
-from miraveja_auth import IRoleMapper, OAuth2Provider, Claims
-from typing import List, Dict
+from miraveja_auth import BaseClaims, IClaimsParser, OAuth2Provider, TokenInvalidException
+from typing import List, Dict, Any, Optional
 
-class Auth0RoleMapper(IRoleMapper):
-    """Role mapper for Auth0 custom claims."""
+class Auth0Claims(BaseClaims):
+    """Claims for Auth0 tokens."""
+    permissions: Optional[List[str]] = None
 
-    def extract_realm_roles(self, claims: Claims) -> List[str]:
-        # Auth0 stores roles in custom namespace
-        return claims.get("https://myapp.com/roles", [])
+    def get_roles(self) -> List[str]:
+        # Auth0 stores roles/permissions in custom namespace or permissions field
+        if self.permissions:
+            return self.permissions
+        return getattr(self, "https://myapp.com/roles", [])
 
-    def extract_client_roles(self, claims: Claims) -> Dict[str, List[str]]:
+    def get_client_roles(self, client_id: str) -> List[str]:
         # Auth0 typically doesn't use client-specific roles
+        return []
+
+    def get_all_client_roles(self) -> Dict[str, List[str]]:
         return {}
 
-# Use custom mapper
+class Auth0ClaimsParser(IClaimsParser):
+    """Parser for Auth0 JWT payloads."""
+
+    def parse(self, payload: Dict[str, Any]) -> Auth0Claims:
+        try:
+            return Auth0Claims.model_validate(payload)
+        except Exception:
+            raise TokenInvalidException()
+
+# Use custom parser
 config = OAuth2Configuration.from_env()
-mapper = Auth0RoleMapper()
-provider = OAuth2Provider(config, role_mapper=mapper)
+parser = Auth0ClaimsParser()
+provider = OAuth2Provider(config, discovery_service, parser)
 ```
 
 ### Offline Token Validation
@@ -873,7 +905,8 @@ MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA...
 -----END PUBLIC KEY-----""",
 )
 
-provider = OAuth2Provider(config)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery_service, parser)
 # Token validation uses static public key instead of JWKS
 user = await provider.validate_token(token)
 ```
@@ -890,14 +923,18 @@ keycloak_config = OAuth2Configuration(
     issuer="https://keycloak.example.com/realms/internal",
     client_id="internal-api",
 )
-keycloak_provider = OAuth2Provider(keycloak_config)
+keycloak_discovery = OIDCDiscoveryService(keycloak_config)
+keycloak_parser = KeycloakClaimsParser()
+keycloak_provider = OAuth2Provider(keycloak_config, keycloak_discovery, keycloak_parser)
 
 # Auth0 provider
 auth0_config = OAuth2Configuration(
     issuer="https://your-tenant.auth0.com/",
     client_id="external-api",
 )
-auth0_provider = OAuth2Provider(auth0_config)
+auth0_discovery = OIDCDiscoveryService(auth0_config)
+auth0_parser = Auth0ClaimsParser()  # Custom parser for Auth0
+auth0_provider = OAuth2Provider(auth0_config, auth0_discovery, auth0_parser)
 
 # Validate against appropriate provider
 async def authenticate(token: str, provider_type: str):
@@ -915,9 +952,11 @@ Ensure tokens have sufficient remaining lifetime:
 config = OAuth2Configuration(
     issuer="https://keycloak.example.com/realms/myrealm",
     client_id="my-client",
-    token_minimum_ttl=300,  # Require at least 5 minutes remaining
+    token_minimum_ttl_seconds=300,  # Require at least 5 minutes remaining
 )
-provider = OAuth2Provider(config)
+discovery = OIDCDiscoveryService(config)
+parser = KeycloakClaimsParser()
+provider = OAuth2Provider(config, discovery, parser)
 
 # Raises TokenExpiredError if token expires in less than 5 minutes
 user = await provider.validate_token(token)
@@ -970,7 +1009,7 @@ async def test_expired_token(mock_provider):
     # Simulate token expiration
     mock_provider.simulate_failure("expired")
 
-    with pytest.raises(TokenExpiredError):
+    with pytest.raises(TokenExpiredException):
         await mock_provider.validate_token("any-token")
 ```
 
@@ -1030,17 +1069,25 @@ poetry run pytest tests/unit
 
 Complete working examples are available in the `examples/` directory:
 
-- **`basic_validation.py`** - Basic token validation and role checking
+- **`basic_usage.py`** - Basic token validation and role checking
 - **`fastapi_app.py`** - Complete FastAPI application with authentication
+- **`custom_claims_parser.py`** - Custom Auth0 claims parser example
+- **`separate_authenticators.py`** - Using separate HTTP and WebSocket authenticators
 
 Run examples:
 
 ```bash
-# Basic validation
-poetry run python examples/basic_validation.py
+# Basic usage
+poetry run python examples/basic_usage.py
 
 # FastAPI app (requires uvicorn)
 poetry run uvicorn examples.fastapi_app:app --reload
+
+# Custom claims parser
+poetry run python examples/custom_claims_parser.py
+
+# Separate authenticators
+poetry run uvicorn examples.separate_authenticators:app --reload
 ```
 
 ## 💡 Best Practices
@@ -1049,7 +1096,7 @@ poetry run uvicorn examples.fastapi_app:app --reload
 2. **Enable SSL verification**: Always use `verify_ssl=True` in production
 3. **Validate token TTL**: Set appropriate `token_minimum_ttl` to ensure tokens have sufficient lifetime
 4. **Use role-based authorization**: Leverage realm and client roles for fine-grained access control
-5. **Handle exceptions properly**: Catch `AuthenticationError` and `AuthorizationError` in your application
+5. **Handle exceptions properly**: Catch `AuthenticationException` and `AuthorizationException` in your application
 6. **Test with mocks**: Use `MockOAuth2Provider` for unit and integration tests
 7. **Cache provider instances**: Reuse `OAuth2Provider` instances to benefit from key caching
 
@@ -1117,7 +1164,7 @@ poetry run pre-commit run --all-files
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License.
 
 ## 🙏 Acknowledgments
 

@@ -99,7 +99,7 @@ class IAuthenticator(ABC):
     """
 
     @abstractmethod
-    async def get_current_user(self, *args, **kwargs) -> User:
+    async def get_current_user(self, *args: Any, **kwargs: Any) -> User:
         """Get current authenticated user (required).
 
         Returns:
@@ -110,7 +110,7 @@ class IAuthenticator(ABC):
         """
 
     @abstractmethod
-    async def get_current_user_optional(self, *args, **kwargs) -> Optional[User]:
+    async def get_current_user_optional(self, *args: Any, **kwargs: Any) -> Optional[User]:
         """Get current authenticated user (optional).
 
         Returns:

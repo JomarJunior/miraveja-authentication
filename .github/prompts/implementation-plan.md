@@ -2054,21 +2054,21 @@ jobs:
 
 ### Documentation
 
-- [ ] Create basic_usage.py example
-- [ ] Create fastapi_app.py example
-- [ ] Create custom_claims_parser.py example (Auth0)
-- [ ] Create separate_authenticators.py example
-- [ ] Write comprehensive README
+- [x] Create basic_usage.py example
+- [x] Create fastapi_app.py example
+- [x] Create custom_claims_parser.py example (Auth0)
+- [x] Create separate_authenticators.py example
+- [x] Write comprehensive README
 - [ ] Add inline documentation
 - [ ] Create API reference
 
 ### Quality Assurance
 
-- [ ] Setup pre-commit hooks
-- [ ] Configure GitHub Actions
-- [ ] Achieve 100% test coverage
-- [ ] Pass all linters
-- [ ] Pass type checking
+- [x] Setup pre-commit hooks
+- [x] Configure GitHub Actions
+- [x] Achieve 100% test coverage
+- [x] Pass all linters
+- [x] Pass type checking
 
 ---
 

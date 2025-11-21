@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -26,9 +26,9 @@ class HTTPAuthenticator(BaseFastAPIAuthenticator):
 
     async def get_current_user(
         self,
-        *args,
+        *args: Any,
         credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
-        **kwargs,
+        **kwargs: Any,
     ) -> User:
         """Get current authenticated user from HTTP Authorization header.
 
@@ -48,9 +48,9 @@ class HTTPAuthenticator(BaseFastAPIAuthenticator):
 
     async def get_current_user_optional(
         self,
-        *args,
+        *args: Any,
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[User]:
         """Get current user from HTTP Authorization header (optional).
 

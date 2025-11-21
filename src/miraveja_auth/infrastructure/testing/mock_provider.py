@@ -5,7 +5,7 @@ from miraveja_auth.domain import IOAuth2Provider, TokenExpiredException, TokenIn
 
 
 class MockOAuth2Provider(IOAuth2Provider):
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the mock OAuth2 provider."""
         self._users: Dict[str, User] = {}
         self._tokens: Dict[str, str] = {}  # token -> user_id mapping

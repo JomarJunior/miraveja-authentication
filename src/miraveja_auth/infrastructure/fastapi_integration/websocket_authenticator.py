@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import Query
 
@@ -15,9 +15,9 @@ class WebSocketAuthenticator(BaseFastAPIAuthenticator):
 
     async def get_current_user(
         self,
-        *args,
+        *args: Any,
         token: str = Query(..., description="JWT access token"),
-        **kwargs,
+        **kwargs: Any,
     ) -> User:
         """Get current user from WebSocket query parameter.
 
@@ -36,9 +36,9 @@ class WebSocketAuthenticator(BaseFastAPIAuthenticator):
 
     async def get_current_user_optional(
         self,
-        *args,
+        *args: Any,
         token: Optional[str] = Query(None, description="JWT access token"),
-        **kwargs,
+        **kwargs: Any,
     ) -> Optional[User]:
         """Get current user from WebSocket query parameter (optional).
 
