@@ -1,40 +1,32 @@
-"""
-Domain Layer
+"""Domain layer - Core business logic."""
 
-Contains core business logic, domain models, interfaces, and exceptions.
-This layer has no dependencies on other layers or external frameworks.
-"""
-
-from miraveja_auth.domain.exceptions import (
-    AuthenticationError,
-    AuthorizationError,
-    ConfigurationError,
-    TokenExpiredError,
-    TokenInvalidError,
+from .exceptions import (
+    AuthenticationException,
+    AuthorizationException,
+    ConfigurationException,
+    TokenExpiredException,
+    TokenInvalidException,
 )
-from miraveja_auth.domain.interfaces import (
+from .interfaces import (
     IAuthenticator,
+    IClaimsParser,
     IOAuth2Provider,
     IOIDCDiscoveryService,
-    IRoleMapper,
 )
-from miraveja_auth.domain.models import Claims, Role, Token, User
+from .models import BaseClaims, Role, Token, User
 
 __all__ = [
-    # Models
     "User",
-    "Claims",
+    "BaseClaims",
     "Token",
     "Role",
-    # Interfaces
     "IOAuth2Provider",
-    "IRoleMapper",
+    "IClaimsParser",
     "IOIDCDiscoveryService",
     "IAuthenticator",
-    # Exceptions
-    "AuthenticationError",
-    "TokenExpiredError",
-    "TokenInvalidError",
-    "AuthorizationError",
-    "ConfigurationError",
+    "AuthenticationException",
+    "TokenExpiredException",
+    "TokenInvalidException",
+    "AuthorizationException",
+    "ConfigurationException",
 ]

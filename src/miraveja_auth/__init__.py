@@ -1,47 +1,67 @@
-"""
-Miraveja Authentication Library
+"""miraveja-authentication - OAuth2/OIDC authentication library.
 
-A modern OAuth2/OIDC authentication library with FastAPI integration.
-Follows DDD/Hexagonal Architecture principles.
+Public API exports.
 """
-
-from miraveja_auth.application.configuration import OAuth2Configuration
-from miraveja_auth.application.oauth2_provider import OAuth2Provider
-from miraveja_auth.domain.exceptions import (
-    AuthenticationError,
-    AuthorizationError,
-    ConfigurationError,
-    TokenExpiredError,
-    TokenInvalidError,
-)
-from miraveja_auth.domain.interfaces import (
-    IAuthenticator,
-    IOAuth2Provider,
-    IOIDCDiscoveryService,
-    IRoleMapper,
-)
-from miraveja_auth.domain.models import Claims, Role, Token, User
 
 __version__ = "0.1.0"
 
+# Application exports
+from .application import OAuth2Configuration, OAuth2Provider
+
+# Domain exports
+from .domain import (
+    AuthenticationException,
+    AuthorizationException,
+    BaseClaims,
+    ConfigurationException,
+    IAuthenticator,
+    IOAuth2Provider,
+    IOIDCDiscoveryService,
+    Role,
+    Token,
+    TokenExpiredException,
+    TokenInvalidException,
+    User,
+)
+
+# Infrastructure exports
+from .infrastructure import (
+    MockOAuth2Provider,
+    OIDCDiscoveryService,
+)
+
 __all__ = [
-    # Domain Models
+    # Version
+    "__version__",
+    # Domain
     "User",
-    "Claims",
+    "BaseClaims",
     "Token",
     "Role",
-    # Domain Interfaces
     "IOAuth2Provider",
-    "IRoleMapper",
     "IOIDCDiscoveryService",
     "IAuthenticator",
-    # Domain Exceptions
-    "AuthenticationError",
-    "TokenExpiredError",
-    "TokenInvalidError",
-    "AuthorizationError",
-    "ConfigurationError",
-    # Application Layer
+    "AuthenticationException",
+    "TokenExpiredException",
+    "TokenInvalidException",
+    "AuthorizationException",
+    "ConfigurationException",
+    # Application
     "OAuth2Configuration",
     "OAuth2Provider",
+    # Infrastructure
+    "OIDCDiscoveryService",
+    "MockOAuth2Provider",
 ]
+
+# FastAPI integration (conditional)
+try:
+    from .infrastructure import (
+        FastAPIAuthenticator,
+        HTTPAuthenticator,
+        WebSocketAuthenticator,
+    )
+
+    __all__.extend(["HTTPAuthenticator", "WebSocketAuthenticator", "FastAPIAuthenticator"])
+except ImportError:
+    pass  # FastAPI not installed

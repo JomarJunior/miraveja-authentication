@@ -1,20 +1,21 @@
-"""
-Infrastructure Layer
+"""Infrastructure layer - External integrations."""
 
-Contains implementations of domain interfaces and external integrations.
-This layer depends on both domain and application layers.
-"""
-
-from miraveja_auth.infrastructure.fastapi_integration.authenticator import (
-    FastAPIAuthenticator,
-)
-from miraveja_auth.infrastructure.services.keycloak_role_mapper import (
-    KeycloakRoleMapper,
-)
-from miraveja_auth.infrastructure.services.oidc_discovery import OIDCDiscoveryService
+from .services import OIDCDiscoveryService
+from .testing import MockOAuth2Provider
 
 __all__ = [
     "OIDCDiscoveryService",
-    "KeycloakRoleMapper",
-    "FastAPIAuthenticator",
+    "MockOAuth2Provider",
 ]
+
+# FastAPI integration (optional)
+try:
+    from .fastapi_integration import (
+        FastAPIAuthenticator,
+        HTTPAuthenticator,
+        WebSocketAuthenticator,
+    )
+
+    __all__.extend(["HTTPAuthenticator", "WebSocketAuthenticator", "FastAPIAuthenticator"])
+except ImportError:
+    pass  # FastAPI not installed

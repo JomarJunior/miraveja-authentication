@@ -1,11 +1,13 @@
-"""
-FastAPI Integration
+"""FastAPI integration."""
 
-FastAPI-specific authentication implementations.
-"""
-
-from miraveja_auth.infrastructure.fastapi_integration.authenticator import FastAPIAuthenticator
+from .authenticator import FastAPIAuthenticator
+from .base import BaseFastAPIAuthenticator
+from .http_authenticator import HTTPAuthenticator
+from .websocket_authenticator import WebSocketAuthenticator
 
 __all__ = [
+    "BaseFastAPIAuthenticator",
+    "HTTPAuthenticator",
+    "WebSocketAuthenticator",
     "FastAPIAuthenticator",
 ]
