@@ -122,6 +122,6 @@ class OAuth2Provider(IOAuth2Provider):
         except jwt.ExpiredSignatureError as e:
             raise TokenExpiredException() from e
         except jwt.InvalidTokenError as e:
-            raise TokenInvalidException() from e
+            raise TokenInvalidException(str(e)) from e
         except Exception as e:
             raise AuthenticationException(f"Token validation failed: {str(e)}") from e

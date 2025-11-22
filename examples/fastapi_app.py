@@ -1,5 +1,7 @@
 """FastAPI application example."""
 
+import dotenv
+import uvicorn
 from fastapi import Depends, FastAPI, WebSocket
 
 from miraveja_auth import (
@@ -10,6 +12,8 @@ from miraveja_auth import (
 from miraveja_auth.domain import User
 from miraveja_auth.infrastructure import FastAPIAuthenticator
 from miraveja_auth.infrastructure.providers.keycloak import KeycloakClaimsParser
+
+dotenv.load_dotenv()
 
 app = FastAPI()
 
@@ -48,3 +52,7 @@ async def websocket_endpoint(websocket: WebSocket, user: User = Depends(authenti
     await websocket.send_json({"message": f"Connected as {user.username}"})
     # ... handle WebSocket communication
     # ... handle WebSocket communication
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8084)

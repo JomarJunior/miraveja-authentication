@@ -223,7 +223,10 @@ class TestOIDCDiscoveryServiceEnsureJWKSClient:
             assert service._jwks_client is mock_jwk_client
             assert service._jwks_uri == "https://auth.example.com/jwks"
             assert service._cache_expiry > 0
-            mock_jwk_client_class.assert_called_once_with("https://auth.example.com/jwks")
+            mock_jwk_client_class.assert_called_once()
+            args, kwargs = mock_jwk_client_class.call_args
+            assert args[0] == "https://auth.example.com/jwks"
+            assert "ssl_context" in kwargs
 
     @pytest.mark.asyncio
     async def test_ensure_jwks_client_uses_cache(self):

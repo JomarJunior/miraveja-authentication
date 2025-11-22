@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import Query
 
@@ -13,11 +13,9 @@ class WebSocketAuthenticator(BaseFastAPIAuthenticator):
     Use for WebSocket connections where Authorization headers aren't available.
     """
 
-    async def get_current_user(
+    async def get_current_user(  # pylint: disable=arguments-differ
         self,
-        *args: Any,
         token: str = Query(..., description="JWT access token"),
-        **kwargs: Any,
     ) -> User:
         """Get current user from WebSocket query parameter.
 
@@ -34,11 +32,9 @@ class WebSocketAuthenticator(BaseFastAPIAuthenticator):
         """
         return await self._validate_token(token)
 
-    async def get_current_user_optional(
+    async def get_current_user_optional(  # pylint: disable=arguments-differ
         self,
-        *args: Any,
         token: Optional[str] = Query(None, description="JWT access token"),
-        **kwargs: Any,
     ) -> Optional[User]:
         """Get current user from WebSocket query parameter (optional).
 

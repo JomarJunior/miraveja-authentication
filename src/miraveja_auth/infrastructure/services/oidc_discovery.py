@@ -1,3 +1,4 @@
+import ssl
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -71,7 +72,16 @@ class OIDCDiscoveryService(IOIDCDiscoveryService):
             if not self._jwks_uri:
                 raise AuthenticationException("JWKS URI not found in OIDC configuration.")
 
-        self._jwks_client = PyJWKClient(self._jwks_uri)
+        # Set up SSL context based on configuration
+        ssl_context = ssl.create_default_context()
+        if not self._config.verify_ssl:
+            ssl_context.check_hostname = False
+            ssl_context.verify_mode = ssl.CERT_NONE
+        else:
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+        # Initialize JWKS client
+        self._jwks_client = PyJWKClient(self._jwks_uri, ssl_context=ssl_context)
         self._cache_expiry = now_epoch + self._cache_ttl_seconds
 
     async def get_signing_key(self, token: str) -> Any:

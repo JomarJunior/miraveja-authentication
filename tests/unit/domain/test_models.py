@@ -131,7 +131,7 @@ class TestBaseClaims:
         )
         assert claims.iss == "https://auth.example.com"
         assert claims.sub == "user-123"
-        assert claims.aud == "client-id"
+        assert claims.aud == ["client-id"]
         assert claims.exp == 1700000000
         assert claims.iat == 1699996400
 

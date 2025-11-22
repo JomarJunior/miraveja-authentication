@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Optional
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -24,11 +24,9 @@ class HTTPAuthenticator(BaseFastAPIAuthenticator):
         self._http_bearer = HTTPBearer()
         self._http_bearer_optional = HTTPBearer(auto_error=False)
 
-    async def get_current_user(
+    async def get_current_user(  # pylint: disable=arguments-differ
         self,
-        *args: Any,
         credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
-        **kwargs: Any,
     ) -> User:
         """Get current authenticated user from HTTP Authorization header.
 
@@ -46,11 +44,9 @@ class HTTPAuthenticator(BaseFastAPIAuthenticator):
         token = credentials.credentials
         return await self._validate_token(token)
 
-    async def get_current_user_optional(
+    async def get_current_user_optional(  # pylint: disable=arguments-differ
         self,
-        *args: Any,
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(HTTPBearer(auto_error=False)),
-        **kwargs: Any,
     ) -> Optional[User]:
         """Get current user from HTTP Authorization header (optional).
 

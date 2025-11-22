@@ -182,10 +182,15 @@ class TestOAuth2Configuration:
 class TestOAuth2ConfigurationFromEnv:
     """Test suite for OAuth2Configuration.from_env() factory method."""
 
-    def test_from_env_with_required_variables_only(self, monkeypatch):
+    def test_from_env_with_required_variables_only(self, monkeypatch: pytest.MonkeyPatch):
         """Test from_env with only required environment variables."""
         monkeypatch.setenv("OAUTH2_ISSUER", "https://auth.example.com")
         monkeypatch.setenv("OAUTH2_CLIENT_ID", "my-client-id")
+        monkeypatch.delenv("OAUTH2_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("OAUTH2_VERIFY_SSL", raising=False)
+        monkeypatch.delenv("OAUTH2_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("OAUTH2_TOKEN_ALGORITHM", raising=False)
+        monkeypatch.delenv("OAUTH2_TOKEN_MIN_TTL", raising=False)
 
         config = OAuth2Configuration.from_env()
 
@@ -217,18 +222,20 @@ class TestOAuth2ConfigurationFromEnv:
         assert config.token_verification_algorithm == "HS256"
         assert config.token_minimum_ttl_seconds == 120
 
-    def test_from_env_missing_issuer(self, monkeypatch):
+    def test_from_env_missing_issuer(self, monkeypatch: pytest.MonkeyPatch):
         """Test from_env raises ValueError when OAUTH2_ISSUER is missing."""
         monkeypatch.setenv("OAUTH2_CLIENT_ID", "my-client-id")
+        monkeypatch.delenv("OAUTH2_ISSUER", raising=False)
         # OAUTH2_ISSUER not set
 
         with pytest.raises(ValueError) as exc_info:
             OAuth2Configuration.from_env()
         assert "OAUTH2_ISSUER environment variable is required" in str(exc_info.value)
 
-    def test_from_env_missing_client_id(self, monkeypatch):
+    def test_from_env_missing_client_id(self, monkeypatch: pytest.MonkeyPatch):
         """Test from_env raises ValueError when OAUTH2_CLIENT_ID is missing."""
         monkeypatch.setenv("OAUTH2_ISSUER", "https://auth.example.com")
+        monkeypatch.delenv("OAUTH2_CLIENT_ID", raising=False)
         # OAUTH2_CLIENT_ID not set
 
         with pytest.raises(ValueError) as exc_info:
@@ -305,10 +312,15 @@ class TestOAuth2ConfigurationFromEnv:
             OAuth2Configuration.from_env()
         assert "OAUTH2_TOKEN_MIN_TTL must be an integer" in str(exc_info.value)
 
-    def test_from_env_optional_variables_not_set(self, monkeypatch):
+    def test_from_env_optional_variables_not_set(self, monkeypatch: pytest.MonkeyPatch):
         """Test from_env with optional variables not set uses defaults."""
         monkeypatch.setenv("OAUTH2_ISSUER", "https://auth.example.com")
         monkeypatch.setenv("OAUTH2_CLIENT_ID", "client-id")
+        monkeypatch.delenv("OAUTH2_CLIENT_SECRET", raising=False)
+        monkeypatch.delenv("OAUTH2_VERIFY_SSL", raising=False)
+        monkeypatch.delenv("OAUTH2_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("OAUTH2_TOKEN_ALGORITHM", raising=False)
+        monkeypatch.delenv("OAUTH2_TOKEN_MIN_TTL", raising=False)
         # No optional variables set
 
         config = OAuth2Configuration.from_env()
@@ -348,12 +360,15 @@ class TestOAuth2ConfigurationFromEnv:
         # The code does: if client_secret: data["client_secret"] = client_secret
         assert config.client_secret is None
 
-    def test_from_env_partial_optional_variables(self, monkeypatch):
+    def test_from_env_partial_optional_variables(self, monkeypatch: pytest.MonkeyPatch):
         """Test from_env with only some optional variables set."""
         monkeypatch.setenv("OAUTH2_ISSUER", "https://auth.example.com")
         monkeypatch.setenv("OAUTH2_CLIENT_ID", "client-id")
         monkeypatch.setenv("OAUTH2_CLIENT_SECRET", "secret")
         monkeypatch.setenv("OAUTH2_TOKEN_ALGORITHM", "HS512")
+        monkeypatch.delenv("OAUTH2_VERIFY_SSL", raising=False)
+        monkeypatch.delenv("OAUTH2_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("OAUTH2_TOKEN_MIN_TTL", raising=False)
         # OAUTH2_VERIFY_SSL, OAUTH2_PUBLIC_KEY, OAUTH2_TOKEN_MIN_TTL not set
 
         config = OAuth2Configuration.from_env()

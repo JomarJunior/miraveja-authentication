@@ -22,8 +22,11 @@ class TokenExpiredException(AuthenticationException):
 class TokenInvalidException(AuthenticationException):
     """Exception raised when an the token signature or structure is invalid."""
 
-    def __init__(self) -> None:
-        super().__init__("The authentication token is invalid.")
+    def __init__(self, message: Optional[str] = None) -> None:
+        if message is None:
+            super().__init__("The authentication token is invalid.")
+        else:
+            super().__init__(f"The authentication token is invalid: {message}")
 
 
 class AuthorizationException(AuthenticationException):

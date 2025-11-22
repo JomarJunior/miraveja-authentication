@@ -26,4 +26,4 @@ class KeycloakClaimsParser(IClaimsParser):
         try:
             return KeycloakClaims.model_validate(payload)
         except Exception as e:
-            raise TokenInvalidException() from e
+            raise TokenInvalidException(str(e)) from e

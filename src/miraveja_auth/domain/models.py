@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from miraveja_auth.domain.exceptions import AuthorizationException
 
@@ -74,7 +74,7 @@ class BaseClaims(BaseModel, ABC):
 
     iss: str = Field(..., description="Issuer - identifies the provider that issued the token")
     sub: str = Field(..., description="Subject - unique identifier for the user")
-    aud: str = Field(..., description="Audience - intended recipient(s) of the token")
+    aud: Union[str, List[str]] = Field(..., description="Audience - intended recipient(s) of the token")
     exp: int = Field(..., description="Expiration time - Unix timestamp when token expires")
     iat: int = Field(..., description="Issued at - Unix timestamp when token was created")
     jti: Optional[str] = Field(default=None, description="JWT ID - unique identifier for this token")
@@ -84,6 +84,20 @@ class BaseClaims(BaseModel, ABC):
     email: Optional[str] = Field(default=None, description="User's email address")
     email_verified: Optional[bool] = Field(default=None, description="Whether the email address has been verified")
     preferred_username: Optional[str] = Field(default=None, description="User's preferred username")
+
+    @field_validator("aud")
+    def normalize_aud(cls, v: Union[str, List[str]]) -> List[str]:
+        """Ensure audience is always a list of strings.
+
+        Args:
+            v: Audience value from JWT claims.
+
+        Returns:
+            Normalized list of audience strings.
+        """
+        if isinstance(v, str):
+            return [v]
+        return v
 
     @abstractmethod
     def get_roles(self) -> List[str]:
