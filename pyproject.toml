@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "miraveja-authentication"
-version = "0.1.0"
+version = "0.1.1"
 description = "A lightweight OAuth2/OpenID Connect authentication library for Python with JWT validation and role-based authorization"
 authors = ["Jomar Júnior de Souza Pereira <jomarjunior@poli.ufrj.br>"]
 readme = "README.md"
